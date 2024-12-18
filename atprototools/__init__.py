@@ -2,6 +2,8 @@ import requests
 import datetime
 import os
 import unittest
+import aiohttp, asyncio, time
+import cv2
 
 # ATP_HOST = "https://bsky.social"
 # ATP_AUTH_TOKEN = ""
@@ -152,16 +154,33 @@ class Session():
 
         return resp
     
+
+    
     def uploadBlob(self, blob_path, content_type):
         """Upload bytes data (a "blob") with the given content type."""
-        headers = {"Authorization": "Bearer " + self.ATP_AUTH_TOKEN, "Content-Type": content_type}
+        content_length = 0
+        headers = {"Authorization": "Bearer " + self.ATP_AUTH_TOKEN, "Content-Type": content_type,}
         with open(blob_path, 'rb') as f:
-            image_bytes = f.read()
+            media_bytes = f.read()
+            # test save the file in root to see if it renders
+            #m = open("media_file_.mp4", "wb")
+            #m.write(media_bytes)
+            #m.close
+            #return
+            content_length = str(len(media_bytes))
+            headers["Content-Length"] = content_length
             resp = requests.post(
                 self.ATP_HOST + "/xrpc/com.atproto.repo.uploadBlob",
-                data=image_bytes,
+                data=media_bytes,
                 headers=headers
             )
+        if "video" in content_type:
+            time.sleep(0.5)
+            print("****UPLOADING VIDEO COMPLETE******")
+        if "image" in content_type:
+            #time.sleep(1.5)
+            print("****UPLOADING IMAGE COMPLETE******")
+            
         return resp
 
     def postBloot(self, postcontent, image_path = None, timestamp=None, reply_to=None):
@@ -206,21 +225,144 @@ class Session():
                 "alt": "",
                 "image": image_resp.json().get('blob')
             }]
+            
+        if video_path:
+            data['record']['embed'] = {}
+            video_resp = self.uploadBlob(video_path, "video/mp4")
+            x = video_resp.json().get('blob')
+            video_resp = self.uploadBlob(video_path, "video/mp4")
+            data["record"]["embed"]["$type"] = "app.bsky.embed.video"
+            data['record']["embed"]['images'] = [{
+                "alt": "",
+                "image": image_resp.json().get('blob')
+            }]    
+            
         if reply_to:
             data['record']['reply'] = reply_to
-        resp = requests.post(
+            resp = requests.post(
             self.ATP_HOST + "/xrpc/com.atproto.repo.createRecord",
             json=data,
             headers=headers
         )
 
         return resp
+    
+    def postBlootWithMedia(self, postcontent, image_path = None, video_path = None, timestamp=None, byte_start=None, byte_end=None, uri=None, reply_to=None):
+        """Post a bloot."""
+        #reply_to expects a dict like the following
+        # {
+        #     #root is the main original post
+        #     "root": {
+        #         "cid": "bafyreig7ox2h5kmcmjukbxfpopy65ggd2ymhbnldcu3fx72ij3c22ods3i", #CID of root post
+        #         "uri": "at://did:plc:nx3kofpg4oxmkonqr6su5lw4/app.bsky.feed.post/3juhgsu4tpi2e" #URI of root post
+        #     },
+        #     #parent is the comment you want to reply to, if you want to reply to the main post directly this should be same as root
+        #     "parent": {
+        #         "cid": "bafyreie7eyj4upwzjdl2vmzqq4gin3qnuttpb6nzi6xybgdpesfrtcuguu",
+        #         "uri": "at://did:plc:mguf3p2ana5qzs7wu3ss4ghk/app.bsky.feed.post/3jum6axhxff22"
+        #     }
+        #}
+        if not timestamp:
+            timestamp = datetime.datetime.now(datetime.timezone.utc)
+        timestamp = timestamp.isoformat().replace('+00:00', 'Z')
+
+        headers = {"Authorization": "Bearer " + self.ATP_AUTH_TOKEN}
+
+        data = {
+            "collection": "app.bsky.feed.post",
+            "$type": "app.bsky.feed.post",
+            "repo": "{}".format(self.DID),
+            "record": {
+                "$type": "app.bsky.feed.post",
+                "createdAt": timestamp,
+                "text": postcontent,
+                "langs": [
+                 "en",
+                ]
+            }
+        }
+
+        if image_path:
+            print("****UPLOADING IMAGE******")
+            data['record']['embed'] = {}
+            image_resp = self.uploadBlob(image_path, "image/jpeg")
+            #x = image_resp.json().get('blob')
+            #image_resp = self.uploadBlob(image_path, "image/jpeg")
+            print("------------------------------")
+            print(image_resp.json())
+            print("------------------------------")
+            data["record"]["embed"]["$type"] = "app.bsky.embed.images"
+            data['record']["embed"]['images'] = [{
+                "alt": "",
+                "image": image_resp.json().get('blob')
+            }]
+            
+        if video_path:
+            cv_vid = cv2.VideoCapture(video_path)
+            height = cv_vid.get(cv2.CAP_PROP_FRAME_HEIGHT)
+            width = cv_vid.get(cv2.CAP_PROP_FRAME_WIDTH)
+            # count the number of frames 
+            frames = cv_vid.get(cv2.CAP_PROP_FRAME_COUNT) 
+            fps = cv_vid.get(cv2.CAP_PROP_FPS) 
+              
+            # calculate duration of the video 
+            seconds = round(frames / fps) 
+            video_time = datetime.timedelta(seconds=seconds)
+            print(f"duration in seconds: {seconds}") 
+            print(f"video time: {video_time}") 
+            if int(seconds) > 60 :
+                print("UPLOAD ERROR: Video file size too big.\nSkipping video")
+                
+                return
+            
+            print("****UPLOADING VIDEO******")
+            data['record']['embed'] = {}
+            video_resp = self.uploadBlob(video_path, "video/mp4")
+            video_link = video_resp.json().get("blob").get("ref").get("$link")
+            video_size = video_resp.json().get("blob").get("size")
+            print("------------------------------")
+            print(video_resp.json())
+            print("------------------------------")
+            print(video_link)
+            print(video_size)
+            video_resp = self.uploadBlob(video_path, "video/mp4")
+            data["record"]["embed"]["alt"] = "A Video?"
+            data["record"]["embed"]["$type"] = "app.bsky.embed.video"
+            data["record"]["embed"]["video"] = video_resp.json().get('blob')
+            data["record"]["embed"]["aspectRatio"] = {
+            "width": width,
+            "height": height
+            }
+        
+        if byte_start:
+            data['record']['facets'] = [{
+                "index": {
+                    "byteEnd": byte_end,
+                    "byteStart": byte_start
+                },
+                "features": [{
+                    "uri": uri,
+                    "$type": "app.bsky.richtext.facet#link"
+                }]
+            }]
+            
+        if reply_to:
+            data['record']['reply'] = reply_to
+        print(data)
+        resp = requests.post(
+            self.ATP_HOST + "/xrpc/com.atproto.repo.createRecord",
+            json=data,
+            headers=headers
+        )
+        print(resp.content)
+        return resp
 
     def deleteBloot(self, did,rkey):
         # rkey: post slug
         # i.e. /profile/foo.bsky.social/post/AAAA
         # rkey is AAAA
-        data = {"collection":"app.bsky.feed.post","repo":"did:plc:{}".format(did),"rkey":"{}".format(rkey)}
+        #redundancy with the string "did:plc:" replacing with only the passed did
+        data = {"collection":"app.bsky.feed.post","repo":"{}".format(did),"rkey":"{}".format(rkey)}
         headers = {"Authorization": "Bearer " + self.ATP_AUTH_TOKEN}
         resp = requests.post(
             self.ATP_HOST + "/xrpc/com.atproto.repo.deleteRecord",
@@ -229,12 +371,11 @@ class Session():
         )
         return resp
 
-    def getArchive(self, did_of_car_to_fetch=None, save_to_disk_path=None):
+    def getArchive(self, did_of_car_to_fetch=None):
         """Get a .car file containing all bloots.
         
         TODO is there a putRepo?
         TODO save to file
-        TODO specify user
         """
 
         if did_of_car_to_fetch == None:
@@ -246,9 +387,6 @@ class Session():
             self.ATP_HOST + "/xrpc/com.atproto.sync.getRepo?did={}".format(did_of_car_to_fetch),
             headers = headers
         )
-
-        if save_to_disk_path:
-            pass
 
         return resp
 
@@ -265,6 +403,14 @@ class Session():
         )
 
         return resp
+        
+    def getLatestRecords(self, username, collection="app.bsky.feed.post"):
+        """Return up to a max of 50 records (API limit?)"""
+        resp = requests.get(
+            self.ATP_HOST + "/xrpc/com.atproto.repo.listRecords?repo={}&collection={}".format(username, collection)
+        )
+        return resp
+
 
     # [[API Design]] TODO one implementation should be highly ergonomic (comfy 2 use) and the other should just closely mirror the API's exact behavior?
     # idk if im super happy about returning requests, either, i kinda want tuples where the primary object u get back is whatever ergonomic thing you expect
