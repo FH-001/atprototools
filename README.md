@@ -6,10 +6,10 @@ this library should serve as a gentle guide of mostly natural-language <br>
 python to get as many people writing bsky code as possible. 
 
 ### ABOUT THIS FORK
-An updated sub-version of the atprototools , that includes the following features:
--Ability to delete records
--Ability to import gif and video posts
--Added meta data for records in postBlootWithMedia()
+An updated sub-version of the atprototools, that includes the following features:
+- Ability to delete records
+- Ability to import gif and video posts
+- Added meta data for records in postBlootWithMedia()
 
 ### TO-DO:
 Since I am just starting and re-learning python, the code is messy. <br>I will improve this as I research and learn more about the atproto endpoints, api and other libraries.
