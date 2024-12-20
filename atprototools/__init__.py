@@ -247,7 +247,7 @@ class Session():
 
         return resp
     
-    def postBlootWithMedia(self, postcontent, image_path = None, video_path = None, timestamp=None, byte_start=None, byte_end=None, uri=None, reply_to=None):
+    def postBlootWithMedia(self, postcontent, image_path = None, video_path = None, timestamp=None, uri_data=None, reply_to=None):
         """Post a bloot."""
         #reply_to expects a dict like the following
         # {
@@ -296,23 +296,30 @@ class Session():
                 "alt": "",
                 "image": image_resp.json().get('blob')
             }]
-            
+        
+                # links/urls
+        #if byte_start:
+        if uri_data:
+            # need to do iterate through a dict
+            data['record']['facets'] = uri_data['record']['facets']
+            #print(data['record']['facets'][0]("index"))
+        
+        # tags/hashtags
+        
         if video_path:
             cv_vid = cv2.VideoCapture(video_path)
             height = cv_vid.get(cv2.CAP_PROP_FRAME_HEIGHT)
             width = cv_vid.get(cv2.CAP_PROP_FRAME_WIDTH)
             # count the number of frames 
             frames = cv_vid.get(cv2.CAP_PROP_FRAME_COUNT) 
-            fps = cv_vid.get(cv2.CAP_PROP_FPS) 
-              
+            fps = cv_vid.get(cv2.CAP_PROP_FPS)           
             # calculate duration of the video 
             seconds = round(frames / fps) 
             video_time = datetime.timedelta(seconds=seconds)
-            print(f"duration in seconds: {seconds}") 
-            print(f"video time: {video_time}") 
+            #print(f"duration in seconds: {seconds}") 
+            #print(f"video time: {video_time}") 
             if int(seconds) > 60 :
-                print("UPLOAD ERROR: Video file size too big.\nSkipping video")
-                
+                print("UPLOAD ERROR: Video file size too big.\nSkipping video.")    
                 return
             
             print("****UPLOADING VIDEO******")
@@ -320,13 +327,13 @@ class Session():
             video_resp = self.uploadBlob(video_path, "video/mp4")
             video_link = video_resp.json().get("blob").get("ref").get("$link")
             video_size = video_resp.json().get("blob").get("size")
-            print("------------------------------")
-            print(video_resp.json())
-            print("------------------------------")
-            print(video_link)
-            print(video_size)
-            video_resp = self.uploadBlob(video_path, "video/mp4")
-            data["record"]["embed"]["alt"] = "A Video?"
+            #print("------------------------------")
+            #print(video_resp.json())
+            #print("------------------------------")
+            #print(video_link)
+            #print(video_size)
+            #video_resp = self.uploadBlob(video_path, "video/mp4")
+            data["record"]["embed"]["alt"] = ""
             data["record"]["embed"]["$type"] = "app.bsky.embed.video"
             data["record"]["embed"]["video"] = video_resp.json().get('blob')
             data["record"]["embed"]["aspectRatio"] = {
@@ -334,17 +341,8 @@ class Session():
             "height": height
             }
         
-        if byte_start:
-            data['record']['facets'] = [{
-                "index": {
-                    "byteEnd": byte_end,
-                    "byteStart": byte_start
-                },
-                "features": [{
-                    "uri": uri,
-                    "$type": "app.bsky.richtext.facet#link"
-                }]
-            }]
+
+
             
         if reply_to:
             data['record']['reply'] = reply_to
